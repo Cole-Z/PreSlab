@@ -1,41 +1,65 @@
-//
-//  PreSlabUITests.swift
-//  PreSlabUITests
-//
-//  Created by Cole Zill on 11/1/26.
-//
-
 import XCTest
 
 final class PreSlabUITests: XCTestCase {
-
-    override func setUpWithError() throws {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
-
-        // In UI tests it is usually best to stop immediately when a failure occurs.
-        continueAfterFailure = false
-
-        // In UI tests it’s important to set the initial state - such as interface orientation - required for your tests before they run. The setUp method is a good place to do this.
-    }
-
-    override func tearDownWithError() throws {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
-    }
-
     @MainActor
-    func testExample() throws {
-        // UI tests must launch the application that they test.
+    func testSampleCardCanBeMeasuredSavedComparedAndDeleted() {
         let app = XCUIApplication()
+        app.launchArguments = ["--uitesting"]
         app.launch()
 
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
+        saveSample(app)
+        saveSample(app)
+
+        app.buttons["compareToggle"].tap()
+        let rows = app.buttons.matching(identifier: "assessmentRow")
+        XCTAssertEqual(rows.count, 2)
+        rows.element(boundBy: 0).tap()
+        rows.element(boundBy: 1).tap()
+        app.buttons["compareSelectedButton"].tap()
+        XCTAssertTrue(app.staticTexts["notAGradeLabel"].waitForExistence(timeout: 5))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+
+        deleteFirstRow(app)
+        deleteFirstRow(app)
+        XCTAssertTrue(app.buttons["practiceSampleButton"].waitForExistence(timeout: 5))
     }
 
     @MainActor
-    func testLaunchPerformance() throws {
-        // This measures how long it takes to launch your application.
-        measure(metrics: [XCTApplicationLaunchMetric()]) {
-            XCUIApplication().launch()
+    private func saveSample(_ app: XCUIApplication) {
+        let practice = app.buttons["practiceSampleButton"]
+        XCTAssertTrue(practice.waitForExistence(timeout: 5))
+        practice.tap()
+
+        let usable = app.descendants(matching: .any)["photoUsable"]
+        XCTAssertTrue(usable.waitForExistence(timeout: 20))
+        app.buttons["continueToCenteringButton"].tap()
+
+        let horizontal = app.staticTexts["centeringRatioHorizontal"]
+        XCTAssertTrue(horizontal.waitForExistence(timeout: 5))
+        XCTAssertTrue(horizontal.label.contains("/"), "Expected a left/right ratio, got \(horizontal.label)")
+
+        let handle = app.otherElements["leftBorderHandle"]
+        if handle.waitForExistence(timeout: 2) {
+            let start = handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            let end = start.withOffset(CGVector(dx: 30, dy: 0))
+            start.press(forDuration: 0.1, thenDragTo: end)
         }
+
+        app.buttons["centeringContinueButton"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["photoUsable"].waitForExistence(timeout: 10))
+        app.buttons["continueToCenteringButton"].tap()
+        XCTAssertTrue(app.staticTexts["centeringRatioHorizontal"].waitForExistence(timeout: 5))
+        app.buttons["centeringContinueButton"].tap()
+
+        XCTAssertTrue(app.staticTexts["notAGradeLabel"].waitForExistence(timeout: 5))
+        app.buttons["saveAssessmentButton"].tap()
+        XCTAssertTrue(app.buttons["assessmentRow"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor
+    private func deleteFirstRow(_ app: XCUIApplication) {
+        app.buttons["assessmentRow"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["deleteAssessmentButton"].waitForExistence(timeout: 5))
+        app.buttons["deleteAssessmentButton"].tap()
     }
 }

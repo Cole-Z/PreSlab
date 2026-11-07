@@ -1,0 +1,2 @@
+# Connectivity check uses Python stdlib only - no dependencies yet.
+# Add backend dependencies here when the grading pipeline is built.

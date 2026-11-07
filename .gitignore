@@ -1,0 +1,14 @@
+# Secrets - never commit. API keys live in the environment / backend server only.
+.env
+.env.*
+!.env.example
+
+# Python (backend)
+.venv/
+__pycache__/
+*.pyc
+
+# macOS / Xcode user state
+.DS_Store
+xcuserdata/
+DerivedData/
