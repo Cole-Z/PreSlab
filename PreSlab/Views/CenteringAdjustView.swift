@@ -23,7 +23,7 @@ struct CenteringAdjustView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("\(side.title) centering")
                 .font(.title2.bold())
-            Text("Drag the handles if a line is off. The ratios describe the borders in this photo. They are not a grade.")
+            Text("Drag each handle onto its line: white circles to the middle of the yellow border, yellow circles to the card corners. The ratios describe the borders in this photo. They are not a grade.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
@@ -183,7 +183,8 @@ private struct ArtworkBorderEditor: View {
         return Circle()
             .fill(Color.white)
             .overlay(Circle().stroke(Color.black.opacity(0.7), lineWidth: 1))
-            .frame(width: 28, height: 28)
+            .frame(width: 18, height: 18)
+            .padding(10)
             .position(x: x, y: y)
             .accessibilityIdentifier(identifier)
             .accessibilityLabel(identifier)
@@ -250,7 +251,8 @@ private struct CardEdgeEditor: View {
         Circle()
             .fill(Color.yellow)
             .overlay(Circle().stroke(Color.black.opacity(0.7), lineWidth: 1))
-            .frame(width: 28, height: 28)
+            .frame(width: 18, height: 18)
+            .padding(10)
             .position(x: fit.minX + fit.width * current.x, y: fit.minY + fit.height * current.y)
             .accessibilityIdentifier(identifier)
             .gesture(
