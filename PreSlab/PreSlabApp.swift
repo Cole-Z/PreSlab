@@ -1,17 +1,15 @@
-//
-//  PreSlabApp.swift
-//  PreSlab
-//
-//  Created by Cole Zill on 11/1/26.
-//
-
+import SwiftData
 import SwiftUI
 
 @main
 struct PreSlabApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            LibraryView()
         }
+        .modelContainer(
+            for: AssessmentRecord.self,
+            inMemory: ProcessInfo.processInfo.arguments.contains("--uitesting")
+        )
     }
 }

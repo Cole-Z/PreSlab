@@ -1,0 +1,193 @@
+import AVFoundation
+import PhotosUI
+import SwiftUI
+import UIKit
+
+struct CameraCaptureView: View {
+    var side: CardSide
+    var onCapture: (UIImage) -> Void
+
+    @State private var camera = CameraModel()
+    @State private var pickerItem: PhotosPickerItem?
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Photograph the \(side.title.lowercased())")
+                .font(.title2.bold())
+            Text("Fit the whole card inside the frame. Leave a small margin, and keep the phone nearly square above the card.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+
+            ZStack {
+                if camera.isAuthorized {
+                    CameraPreview(session: camera.session)
+                    FramingGuide()
+                } else {
+                    ContentUnavailableView(
+                        "Camera unavailable",
+                        systemImage: "camera",
+                        description: Text(camera.statusMessage)
+                    )
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .aspectRatio(3.0 / 4.0, contentMode: .fit)
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+
+            Button {
+                camera.capture(onCapture)
+            } label: {
+                Text("Take photo")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!camera.isAuthorized)
+            .accessibilityIdentifier("takePhotoButton")
+
+            PhotosPicker(selection: $pickerItem, matching: .images) {
+                Text("Choose from library")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("photoLibraryButton")
+            .onChange(of: pickerItem) { _, item in
+                guard let item else { return }
+                Task {
+                    if let data = try? await item.loadTransferable(type: Data.self),
+                       let image = UIImage(data: data) {
+                        onCapture(image)
+                    }
+                }
+            }
+        }
+        .padding()
+        .onAppear { camera.start() }
+        .onDisappear { camera.stop() }
+    }
+}
+
+private struct FramingGuide: View {
+    var body: some View {
+        GeometryReader { geo in
+            let inset = CGSize(width: max(0, geo.size.width - 56), height: max(0, geo.size.height - 56))
+            let card = aspectFitRect(content: CGSize(width: 2.5, height: 3.5), in: inset)
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.white, lineWidth: 2)
+                .frame(width: card.width, height: card.height)
+                .position(x: card.midX + 28, y: card.midY + 28)
+            Text("Card")
+                .font(.caption.bold())
+                .foregroundStyle(.white)
+                .shadow(radius: 2)
+                .position(x: geo.size.width / 2, y: card.minY + 16)
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+func aspectFitRect(content: CGSize, in bounds: CGSize) -> CGRect {
+    guard content.width > 0, content.height > 0, bounds.width > 0, bounds.height > 0 else {
+        return .zero
+    }
+    let scale = min(bounds.width / content.width, bounds.height / content.height)
+    let width = content.width * scale
+    let height = content.height * scale
+    return CGRect(x: (bounds.width - width) / 2, y: (bounds.height - height) / 2, width: width, height: height)
+}
+
+private struct CameraPreview: UIViewRepresentable {
+    let session: AVCaptureSession
+
+    func makeUIView(context: Context) -> PreviewView {
+        let view = PreviewView()
+        view.previewLayer.session = session
+        view.previewLayer.videoGravity = .resizeAspectFill
+        return view
+    }
+
+    func updateUIView(_ uiView: PreviewView, context: Context) {}
+}
+
+private final class PreviewView: UIView {
+    override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
+    var previewLayer: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
+}
+
+@Observable
+final class CameraModel: NSObject, AVCapturePhotoCaptureDelegate {
+    let session = AVCaptureSession()
+    private let output = AVCapturePhotoOutput()
+    private let queue = DispatchQueue(label: "preslab.camera")
+    private var onPhoto: ((UIImage) -> Void)?
+    var isAuthorized = false
+    var statusMessage = "Checking camera access."
+
+    func start() {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            isAuthorized = true
+            configureAndStart()
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
+                DispatchQueue.main.async {
+                    self?.isAuthorized = granted
+                    self?.statusMessage = granted ? "" : "Camera access is off. You can still choose a photo from your library."
+                    if granted { self?.configureAndStart() }
+                }
+            }
+        default:
+            isAuthorized = false
+            statusMessage = "Camera access is off. You can still choose a photo from your library, or allow the camera in Settings."
+        }
+    }
+
+    func stop() {
+        queue.async { [session] in
+            if session.isRunning { session.stopRunning() }
+        }
+    }
+
+    func capture(_ handler: @escaping (UIImage) -> Void) {
+        onPhoto = handler
+        let settings = AVCapturePhotoSettings()
+        output.capturePhoto(with: settings, delegate: self)
+    }
+
+    private func configureAndStart() {
+        queue.async { [weak self] in
+            guard let self else { return }
+            if self.session.inputs.isEmpty {
+                self.session.beginConfiguration()
+                self.session.sessionPreset = .photo
+                guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
+                      let input = try? AVCaptureDeviceInput(device: device),
+                      self.session.canAddInput(input),
+                      self.session.canAddOutput(self.output) else {
+                    self.session.commitConfiguration()
+                    DispatchQueue.main.async {
+                        self.isAuthorized = false
+                        self.statusMessage = "This device has no usable back camera. Choose a photo from your library."
+                    }
+                    return
+                }
+                self.session.addInput(input)
+                self.session.addOutput(self.output)
+                if let connection = self.output.connection(with: .video), connection.isVideoRotationAngleSupported(90) {
+                    connection.videoRotationAngle = 90
+                }
+                self.session.commitConfiguration()
+            }
+            if !self.session.isRunning { self.session.startRunning() }
+        }
+    }
+
+    nonisolated func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
+        guard error == nil, let data = photo.fileDataRepresentation(), let image = UIImage(data: data) else { return }
+        Task { @MainActor in
+            self.onPhoto?(image)
+            self.onPhoto = nil
+        }
+    }
+}
