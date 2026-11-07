@@ -10,7 +10,7 @@
 
 The question: on a standard-border Pokémon card, under a written photo protocol, how close are the app's left/right and top/bottom ratios to a physical measurement, and does a full-art card come back unmeasured?
 
-**Set.** About 20–30 Pokémon cards Cole owns, mixed standard-border and full-art, front and back. Ground truth is a ruler, caliper, or flatbed measurement of each border, written down before opening the app result. Each card: window light, room light, and a flash or deliberate glare shot. Two phones if available. Also shoot a bad set on purpose: sleeve, blur, cutoff, steep angle. Record the phone model and whether the automatic lines were accepted or moved.
+**Set.** About 20–30 Pokémon cards Cole owns, mixed standard-border (both yellow-border and silver-border eras) and full-art, front and back. Ground truth is a ruler, caliper, or flatbed measurement of each border, written down before opening the app result. Each card: window light, room light, and a flash or deliberate glare shot. Two phones if available. Also shoot a bad set on purpose: sleeve, blur, cutoff, steep angle. Record the phone model and whether the automatic lines were accepted or moved.
 
 **Report.**
 

@@ -23,7 +23,7 @@ struct CenteringAdjustView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("\(side.title) centering")
                 .font(.title2.bold())
-            Text("Center each crosshair on its edge: white where the yellow border meets the picture, yellow on the card corners. The dotted lines help you aim. The ratios describe the borders in this photo. They are not a grade.")
+            Text("Center each crosshair on its edge: white where the border meets the picture, yellow on the card corners. The dotted lines help you aim. The ratios describe the borders in this photo. They are not a grade.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
