@@ -74,7 +74,7 @@ A later model may describe a crop. That sentence is an observation, shown next t
 
 ## Business
 
-Subscription pricing is not decided. Milestone 1 has no StoreKit product. A subscription needs a known cost per scan, which this version does not have. Competitors include Binder AI, CardSense, Cardinal, Graid, and others. PreSlab's difference is showing the measurement and its limit, not claiming a higher grade.
+Subscription pricing is not decided. Milestone 1 has no StoreKit product. A subscription needs a known cost per scan, which this version does not have. Competitors include Binder AI, CardSense, Cardinal, Graid, and others. PreSlab's difference is showing the measurement and its limit, not claiming a higher grade. The monetization proposal lives in `docs/preslab-monetization.md`; prices stay undecided until the validation run measures per-scan cost.
 
 ## Phases
 

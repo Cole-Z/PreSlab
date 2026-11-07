@@ -23,7 +23,7 @@ struct CenteringAdjustView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("\(side.title) centering")
                 .font(.title2.bold())
-            Text("Drag the handles if a line is off. The ratios describe the borders in this photo. They are not a grade.")
+            Text("Center each crosshair on its edge: white where the border meets the picture, yellow on the card corners. The dotted lines help you aim. The ratios describe the borders in this photo. They are not a grade.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
@@ -180,12 +180,12 @@ private struct ArtworkBorderEditor: View {
     private func insetLine(orientation: LineOrientation, fraction: Double, fit: CGRect, identifier: String, update: @escaping (Double) -> Void) -> some View {
         let x = orientation == .vertical ? fit.minX + fit.width * fraction : fit.midX
         let y = orientation == .horizontal ? fit.minY + fit.height * fraction : fit.midY
-        return Circle()
-            .fill(Color.white)
-            .overlay(Circle().stroke(Color.black.opacity(0.7), lineWidth: 1))
-            .frame(width: 28, height: 28)
-            .position(x: x, y: y)
-            .accessibilityIdentifier(identifier)
+        let point = CGPoint(x: x, y: y)
+        return Group {
+            SpanGuides(point: point, fit: fit, primary: orientation == .vertical ? .vertical : .horizontal)
+            CrosshairHandle(color: .white)
+                .position(x: x, y: y)
+                .accessibilityIdentifier(identifier)
             .accessibilityLabel(identifier)
             .accessibilityAdjustableAction { direction in
                 let delta = direction == .increment ? 0.01 : -0.01
@@ -204,6 +204,7 @@ private struct ArtworkBorderEditor: View {
                     update(next)
                 }
             })
+        }
     }
 }
 
@@ -247,21 +248,22 @@ private struct CardEdgeEditor: View {
     }
 
     private func cornerHandle(_ current: NormPoint, fit: CGRect, identifier: String, update: @escaping (NormPoint) -> CardQuad) -> some View {
-        Circle()
-            .fill(Color.yellow)
-            .overlay(Circle().stroke(Color.black.opacity(0.7), lineWidth: 1))
-            .frame(width: 28, height: 28)
-            .position(x: fit.minX + fit.width * current.x, y: fit.minY + fit.height * current.y)
-            .accessibilityIdentifier(identifier)
-            .gesture(
-                DragGesture(coordinateSpace: .named("edges"))
-                    .onChanged { value in
-                        onPreview(update(point(from: value.location, fit: fit)))
-                    }
-                    .onEnded { value in
-                        onCommit(update(point(from: value.location, fit: fit)))
-                    }
-            )
+        let corner = CGPoint(x: fit.minX + fit.width * current.x, y: fit.minY + fit.height * current.y)
+        return Group {
+            SpanGuides(point: corner, fit: fit, primary: nil)
+            CrosshairHandle(color: .yellow)
+                .position(x: corner.x, y: corner.y)
+                .accessibilityIdentifier(identifier)
+                .gesture(
+                    DragGesture(coordinateSpace: .named("edges"))
+                        .onChanged { value in
+                            onPreview(update(point(from: value.location, fit: fit)))
+                        }
+                        .onEnded { value in
+                            onCommit(update(point(from: value.location, fit: fit)))
+                        }
+                )
+        }
     }
 
     private func point(from location: CGPoint, fit: CGRect) -> NormPoint {
@@ -269,5 +271,64 @@ private struct CardEdgeEditor: View {
             x: min(1, max(0, (location.x - fit.minX) / max(fit.width, 1))),
             y: min(1, max(0, (location.y - fit.minY) / max(fit.height, 1)))
         )
+    }
+}
+
+private enum GuidePrimary { case vertical, horizontal }
+
+/// Dotted aim lines spanning the fitted photo through a handle point.
+/// The primary line (the measured edge) draws bright; the cross line is dim.
+private struct SpanGuides: View {
+    var point: CGPoint
+    var fit: CGRect
+    var primary: GuidePrimary?
+
+    var body: some View {
+        Group {
+            guide(
+                from: CGPoint(x: point.x, y: fit.minY),
+                to: CGPoint(x: point.x, y: fit.maxY),
+                bright: primary == .vertical
+            )
+            guide(
+                from: CGPoint(x: fit.minX, y: point.y),
+                to: CGPoint(x: fit.maxX, y: point.y),
+                bright: primary == .horizontal
+            )
+        }
+    }
+
+    private func guide(from: CGPoint, to: CGPoint, bright: Bool) -> some View {
+        Path { path in
+            path.move(to: from)
+            path.addLine(to: to)
+        }
+        .stroke(
+            Color.white.opacity(bright ? 0.9 : 0.4),
+            style: StrokeStyle(lineWidth: 1, dash: [5, 4])
+        )
+        .shadow(color: .black.opacity(0.8), radius: 1)
+    }
+}
+
+/// Ring with cross arms. The ring centers on the measured edge;
+/// the arms make the center point visible against busy artwork.
+private struct CrosshairHandle: View {
+    var color: Color
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .strokeBorder(color, lineWidth: 2.5)
+                .frame(width: 18, height: 18)
+            RoundedRectangle(cornerRadius: 1)
+                .fill(color)
+                .frame(width: 28, height: 2.5)
+            RoundedRectangle(cornerRadius: 1)
+                .fill(color)
+                .frame(width: 2.5, height: 28)
+        }
+        .shadow(color: .black.opacity(0.9), radius: 1)
+        .padding(10)
     }
 }
