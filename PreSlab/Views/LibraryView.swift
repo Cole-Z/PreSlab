@@ -33,6 +33,8 @@ struct LibraryView: View {
                        let b = records.first(where: { $0.id == second }) {
                         CompareView(first: a, second: b)
                     }
+                case .stubTest:
+                    StubTestView()
                 }
             }
         }
@@ -54,6 +56,10 @@ struct LibraryView: View {
 
     private var list: some View {
         List {
+            Section("Developer") {
+                Button("Test AI stub on sample card") { path.append(Route.stubTest) }
+                    .accessibilityIdentifier("stubTestButton")
+            }
             ForEach(records) { record in
                 Button {
                     if comparing {
@@ -164,4 +170,5 @@ private enum Route: Hashable {
     case capture(sample: Bool)
     case detail(UUID)
     case compare(UUID, UUID)
+    case stubTest
 }

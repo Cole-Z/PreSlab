@@ -15,14 +15,14 @@ struct CameraCaptureView: View {
         VStack(spacing: 16) {
             Text("Photograph the \(side.title.lowercased())")
                 .font(.title2.bold())
-            Text("Fit the whole card inside the frame. Leave a small margin, and keep the phone nearly square above the card.")
+            Text("Fit the whole card inside the frame. Leave a small margin, keep the phone nearly square above the card, and tap the card to focus before you shoot.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
             ZStack {
                 if camera.isAuthorized {
-                    CameraPreview(session: camera.session)
+                    CameraPreview(session: camera.session, onTap: camera.focus(at:))
                     FramingGuide()
                 } else {
                     ContentUnavailableView(
@@ -39,11 +39,11 @@ struct CameraCaptureView: View {
             Button {
                 camera.capture(onCapture)
             } label: {
-                Text("Take photo")
+                Text(camera.isFocusing ? "Focusing…" : "Take photo")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            .disabled(!camera.isAuthorized)
+            .disabled(!camera.isAuthorized || camera.isFocusing)
             .accessibilityIdentifier("takePhotoButton")
 
             PhotosPicker(selection: $pickerItem, matching: .images) {
@@ -99,15 +99,38 @@ func aspectFitRect(content: CGSize, in bounds: CGSize) -> CGRect {
 
 private struct CameraPreview: UIViewRepresentable {
     let session: AVCaptureSession
+    var onTap: (CGPoint) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onTap: onTap)
+    }
 
     func makeUIView(context: Context) -> PreviewView {
         let view = PreviewView()
         view.previewLayer.session = session
         view.previewLayer.videoGravity = .resizeAspectFill
+        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tapped(_:)))
+        view.addGestureRecognizer(tap)
+        context.coordinator.view = view
         return view
     }
 
     func updateUIView(_ uiView: PreviewView, context: Context) {}
+
+    final class Coordinator: NSObject {
+        var onTap: (CGPoint) -> Void
+        weak var view: PreviewView?
+
+        init(onTap: @escaping (CGPoint) -> Void) {
+            self.onTap = onTap
+        }
+
+        @objc func tapped(_ gesture: UITapGestureRecognizer) {
+            guard let view, gesture.state == .recognized else { return }
+            let layerPoint = gesture.location(in: view)
+            onTap(view.previewLayer.captureDevicePointConverted(fromLayerPoint: layerPoint))
+        }
+    }
 }
 
 private final class PreviewView: UIView {
@@ -121,7 +144,10 @@ final class CameraModel: NSObject, AVCapturePhotoCaptureDelegate {
     private let output = AVCapturePhotoOutput()
     private let queue = DispatchQueue(label: "preslab.camera")
     private var onPhoto: ((UIImage) -> Void)?
+    private var device: AVCaptureDevice?
+    private var focusObservation: NSKeyValueObservation?
     var isAuthorized = false
+    var isFocusing = false
     var statusMessage = "Checking camera access."
 
     func start() {
@@ -151,8 +177,61 @@ final class CameraModel: NSObject, AVCapturePhotoCaptureDelegate {
 
     func capture(_ handler: @escaping (UIImage) -> Void) {
         onPhoto = handler
-        let settings = AVCapturePhotoSettings()
-        output.capturePhoto(with: settings, delegate: self)
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.lockFocusBeforeCapture()
+            let settings = AVCapturePhotoSettings()
+            self.output.capturePhoto(with: settings, delegate: self)
+        }
+    }
+
+    /// Focuses where the user tapped, in preview-layer coordinates (0–1).
+    func focus(at devicePoint: CGPoint) {
+        queue.async { [weak self] in
+            guard let self, let device = self.device else { return }
+            let point = CGPoint(x: min(max(devicePoint.x, 0), 1), y: min(max(devicePoint.y, 0), 1))
+            do {
+                try device.lockForConfiguration()
+                if device.isFocusPointOfInterestSupported {
+                    device.focusPointOfInterest = point
+                }
+                if device.isFocusModeSupported(.autoFocus) {
+                    device.focusMode = .autoFocus
+                }
+                if device.isExposurePointOfInterestSupported {
+                    device.exposurePointOfInterest = point
+                }
+                if device.isExposureModeSupported(.autoExpose) {
+                    device.exposureMode = .autoExpose
+                }
+                let adjusting = device.isAdjustingFocus
+                device.unlockForConfiguration()
+                DispatchQueue.main.async { self.isFocusing = adjusting }
+            } catch {
+                return
+            }
+        }
+    }
+
+    /// Locks focus before the still so the photo uses a settled lens.
+    /// Gives up after a short wait rather than blocking capture forever.
+    private func lockFocusBeforeCapture() {
+        guard let device, device.isFocusModeSupported(.autoFocus) else { return }
+        do {
+            try device.lockForConfiguration()
+            if !device.isAdjustingFocus {
+                device.focusMode = .autoFocus
+            }
+            device.unlockForConfiguration()
+        } catch {
+            return
+        }
+        DispatchQueue.main.async { self.isFocusing = true }
+        let deadline = Date().addingTimeInterval(1.5)
+        while device.isAdjustingFocus, Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        DispatchQueue.main.async { self.isFocusing = false }
     }
 
     private func configureAndStart() {
@@ -174,6 +253,10 @@ final class CameraModel: NSObject, AVCapturePhotoCaptureDelegate {
                 }
                 self.session.addInput(input)
                 self.session.addOutput(self.output)
+                self.device = device
+                self.focusObservation = device.observe(\.isAdjustingFocus, options: [.initial, .new]) { [weak self] device, _ in
+                    DispatchQueue.main.async { self?.isFocusing = device.isAdjustingFocus }
+                }
                 if let connection = self.output.connection(with: .video), connection.isVideoRotationAngleSupported(90) {
                     connection.videoRotationAngle = 90
                 }
