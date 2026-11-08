@@ -36,7 +36,18 @@ nonisolated struct LiveConditionObserver: ConditionObserver {
     }
 }
 
-nonisolated enum LiveObserverError: Error {
+nonisolated enum LiveObserverError: LocalizedError {
     case badStatus(Int)
     case badPayload
+
+    var errorDescription: String? {
+        switch self {
+        case .badStatus(let code) where code < 0:
+            return "Could not reach the pilot server at all. Check Wi-Fi and the server URL."
+        case .badStatus(let code):
+            return "The pilot server answered HTTP \(code)."
+        case .badPayload:
+            return "The pilot server answered, but its reply did not parse."
+        }
+    }
 }
