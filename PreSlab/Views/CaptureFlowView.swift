@@ -101,7 +101,7 @@ struct CaptureFlowView: View {
                 Text("The card is in frame and the edges are clear enough to try a centering measurement.")
                     .foregroundStyle(.secondary)
             } else {
-                Text("Take another photo. Measuring from this one would be a guess.")
+                Text("Not ready to measure — \(issues.count) fix\(issues.count == 1 ? "" : "es") needed. Measuring from this photo would be a guess.")
                     .foregroundStyle(.secondary)
                 ForEach(issues, id: \.self) { issue in
                     VStack(alignment: .leading, spacing: 4) {

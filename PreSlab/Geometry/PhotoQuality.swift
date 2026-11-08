@@ -12,10 +12,10 @@ nonisolated enum PhotoIssue: String, Codable, CaseIterable, Equatable, Sendable 
     var title: String {
         switch self {
         case .noCard: "No card found"
-        case .tooSmall: "Card is too small"
-        case .edgeCutOff: "Card is cut off"
+        case .tooSmall: "Card too small in frame"
+        case .edgeCutOff: "Card cut off by the frame"
         case .tooSkewed: "Camera angle is too steep"
-        case .blur: "Photo is soft"
+        case .blur: "Photo is blurry"
         case .glare: "Glare on the card"
         }
     }
