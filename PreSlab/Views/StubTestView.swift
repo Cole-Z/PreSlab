@@ -1,14 +1,19 @@
 import SwiftUI
+import SwiftData
 
 /// Developer-only surface for poking the observation harness.
-/// Runs the real crop pipeline on the sample card and answers it with the
-/// canned stub. No network, no model, no key. Never a grade.
+/// Runs the real crop pipeline on the sample card or a saved assessment and
+/// answers it with the canned stub or the live pilot server.
+/// Never a grade.
 struct StubTestView: View {
     enum Source: String, CaseIterable {
         case stub = "Stub"
         case live = "Live pilot"
     }
 
+    @Query(sort: \AssessmentRecord.createdAt, order: .reverse) private var records: [AssessmentRecord]
+    @State private var useSample = true
+    @State private var selectedID: UUID?
     @State private var source: Source = .stub
     @State private var serverURL = "http://192.168.1.73:8080"
     @State private var crops: [ObservationCrop] = []
@@ -18,6 +23,23 @@ struct StubTestView: View {
 
     var body: some View {
         List {
+            Section("Photo") {
+                Picker("Photo", selection: $useSample) {
+                    Text("Sample card").tag(true)
+                    Text("Saved assessment").tag(false)
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("observerPhotoPicker")
+                if !useSample {
+                    Picker("Assessment", selection: $selectedID) {
+                        Text("Pick one").tag(nil as UUID?)
+                        ForEach(records) { record in
+                            Text("\(record.createdAt.formatted(date: .abbreviated, time: .shortened)) — \(AssessmentVerdict.decide(front: record.frontFinding, back: record.backFinding).title)").tag(record.id as UUID?)
+                        }
+                    }
+                    .accessibilityIdentifier("observerAssessmentPicker")
+                }
+            }
             Section {
                 Picker("Source", selection: $source) {
                     ForEach(Source.allCases, id: \.self) { Text($0.rawValue).tag($0) }
@@ -67,9 +89,10 @@ struct StubTestView: View {
     private func run() async {
         ran = false
         errorMessage = nil
-        let assessment = CardGeometryEngine.assess(SampleCard.front)
-        guard let warped = assessment.warped else {
-            errorMessage = "The sample card could not be flattened."
+        guard let warped = warpedCard() else {
+            errorMessage = useSample
+                ? "The sample card could not be flattened."
+                : "Pick a saved assessment with a usable front photo first."
             ran = true
             return
         }
@@ -93,5 +116,28 @@ struct StubTestView: View {
             }
             ran = true
         }
+    }
+
+    /// Flattens the sample card, or re-flattens a saved assessment's front
+    /// photo from its stored card position so crops land on the card.
+    private func warpedCard() -> RGBAImage? {
+        if useSample {
+            return CardGeometryEngine.assess(SampleCard.front).warped
+        }
+        guard let id = selectedID,
+              let record = records.first(where: { $0.id == id }),
+              let photo = ImageStore.load(record.frontFileName),
+              let rgba = ImageCoding.rgba(from: photo)
+        else { return nil }
+        let finding = record.frontFinding
+        if let quad = finding.quad {
+            return CardGeometryEngine.assess(
+                image: rgba,
+                quad: quad,
+                presetInsets: finding.insets,
+                adjustedByUser: finding.adjustedByUser
+            ).warped
+        }
+        return CardGeometryEngine.assess(rgba).warped
     }
 }
