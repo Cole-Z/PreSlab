@@ -3,16 +3,23 @@ import Testing
 import UIKit
 @testable import PreSlab
 
-@Test func cropBuilderCoversEightLabeledRegions() {
+@Test func cropBuilderCoversNineLabeledRegions() {
     let card = SampleCard.cardOnly(borders: SampleCard.frontPixels)
     let crops = ObservationCropBuilder.build(from: card)
-    #expect(crops.map(\.region) == ["topLeft", "topRight", "bottomRight", "bottomLeft", "topEdge", "rightEdge", "bottomEdge", "leftEdge"])
+    #expect(crops.map(\.region) == ["topLeft", "topRight", "bottomRight", "bottomLeft", "topEdge", "rightEdge", "bottomEdge", "leftEdge", "center"])
     for crop in crops {
         #expect(!crop.jpeg.isEmpty)
         let image = UIImage(data: crop.jpeg)
         #expect(image != nil)
         #expect((image?.size.width ?? 0) > 0)
     }
+}
+
+@Test func regionPrefixMarksTheCardSide() {
+    let card = SampleCard.cardOnly(borders: SampleCard.frontPixels)
+    let crops = ObservationCropBuilder.buildRegions(from: card, prefix: "back-")
+    #expect(crops.count == 9)
+    #expect(crops.allSatisfy { $0.region.hasPrefix("back-") })
 }
 
 @Test func tinyImageYieldsNoCropsWithoutCrashing() {

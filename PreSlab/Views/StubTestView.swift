@@ -89,14 +89,17 @@ struct StubTestView: View {
     private func run() async {
         ran = false
         errorMessage = nil
-        guard let warped = warpedCard() else {
+        let warped = warpedCards()
+        guard !warped.isEmpty else {
             errorMessage = useSample
                 ? "The sample card could not be flattened."
-                : "Pick a saved assessment with a usable front photo first."
+                : "Pick a saved assessment with usable photos first."
             ran = true
             return
         }
-        let built = ObservationCropBuilder.build(from: warped)
+        let built = warped.flatMap { side, image in
+            ObservationCropBuilder.buildRegions(from: image, prefix: "\(side)-")
+        }
         crops = built
         switch source {
         case .stub:
@@ -118,18 +121,28 @@ struct StubTestView: View {
         }
     }
 
-    /// Flattens the sample card, or re-flattens a saved assessment's front
-    /// photo from its stored card position so crops land on the card.
-    private func warpedCard() -> RGBAImage? {
+    /// Flattens front and back: the sample card, or a saved assessment's
+    /// photos re-flattened from their stored card positions.
+    private func warpedCards() -> [(String, RGBAImage)] {
         if useSample {
-            return CardGeometryEngine.assess(SampleCard.front).warped
+            return [
+                ("front", CardGeometryEngine.assess(SampleCard.front).warped),
+                ("back", CardGeometryEngine.assess(SampleCard.back).warped),
+            ].compactMap { side, image in image.map { (side, $0) } }
         }
         guard let id = selectedID,
-              let record = records.first(where: { $0.id == id }),
-              let photo = ImageStore.load(record.frontFileName),
+              let record = records.first(where: { $0.id == id })
+        else { return [] }
+        return [
+            ("front", flatten(photoName: record.frontFileName, finding: record.frontFinding)),
+            ("back", flatten(photoName: record.backFileName, finding: record.backFinding)),
+        ].compactMap { side, image in image.map { (side, $0) } }
+    }
+
+    private func flatten(photoName: String, finding: SideFinding) -> RGBAImage? {
+        guard let photo = ImageStore.load(photoName),
               let rgba = ImageCoding.rgba(from: photo)
         else { return nil }
-        let finding = record.frontFinding
         if let quad = finding.quad {
             return CardGeometryEngine.assess(
                 image: rgba,

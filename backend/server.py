@@ -39,8 +39,9 @@ KEY_FILE = os.environ.get(
     "PRESLAB_KEY_FILE",
     os.path.join(os.path.expanduser("~"), "Documents", "preslab-key.txt"),
 )
-MAX_CROPS = 10
+MAX_CROPS = 20
 MAX_BODY_BYTES = 25 * 1024 * 1024
+CROP_WORKERS = 4
 
 # Muse Spark takes image input on the same chat-completions endpoint.
 PREFERRED_MODEL = "muse-spark-1.3"
@@ -116,53 +117,71 @@ class State:
     model = ""
 
 
+def observe_one(crop: dict) -> dict:
+    region = str(crop.get("region", "unknown"))
+    payload = {
+        "model": State.model,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": OBSERVE_PROMPT},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": "data:image/jpeg;base64," + crop.get("jpeg_b64", "")},
+                    },
+                ],
+            }
+        ],
+        "max_tokens": 2048,
+        "temperature": 0.2,
+    }
+    started = time.time()
+    body, _ = api_post(State.key, "/chat/completions", payload)
+    latency = time.time() - started
+    content = ""
+    try:
+        content = body["choices"][0]["message"]["content"] or ""
+    except (KeyError, IndexError, TypeError):
+        pass
+    statement, limitation = content.strip(), ""
+    try:
+        parsed = json.loads(content.strip().strip("`"))
+        statement = str(parsed.get("statement", content)).strip()
+        limitation = str(parsed.get("limitation", "")).strip()
+    except (ValueError, AttributeError):
+        pass
+    usage = body.get("usage") or {}
+    cost = estimate_cost(State.model, usage) or 0.0
+    return {
+        "region": region,
+        "statement": statement,
+        "limitation": limitation,
+        "prompt_tokens": usage.get("prompt_tokens") or usage.get("input_tokens") or 0,
+        "completion_tokens": usage.get("completion_tokens") or usage.get("output_tokens") or 0,
+        "cost": cost,
+        "latency": latency,
+    }
+
+
 def observe_crops(crops: list) -> dict:
+    import concurrent.futures
+
     observations = []
     total_cost = 0.0
     total_latency = 0.0
     total_prompt = 0
     total_completion = 0
-    for crop in crops[:MAX_CROPS]:
-        region = str(crop.get("region", "unknown"))
-        payload = {
-            "model": State.model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": OBSERVE_PROMPT},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": "data:image/jpeg;base64," + crop.get("jpeg_b64", "")},
-                        },
-                    ],
-                }
-            ],
-            "max_tokens": 2048,
-            "temperature": 0.2,
-        }
-        body, latency = api_post(State.key, "/chat/completions", payload)
-        total_latency += latency
-        content = ""
-        try:
-            content = body["choices"][0]["message"]["content"] or ""
-        except (KeyError, IndexError, TypeError):
-            pass
-        statement, limitation = content.strip(), ""
-        try:
-            parsed = json.loads(content.strip().strip("`"))
-            statement = str(parsed.get("statement", content)).strip()
-            limitation = str(parsed.get("limitation", "")).strip()
-        except (ValueError, AttributeError):
-            pass
-        usage = body.get("usage") or {}
-        cost = estimate_cost(State.model, usage) or 0.0
-        total_cost += cost
-        total_prompt += usage.get("prompt_tokens") or usage.get("input_tokens") or 0
-        total_completion += usage.get("completion_tokens") or usage.get("output_tokens") or 0
-        observations.append(
-            {"region": region, "statement": statement, "limitation": limitation}
-        )
+    with concurrent.futures.ThreadPoolExecutor(max_workers=CROP_WORKERS) as pool:
+        for result in pool.map(observe_one, crops[:MAX_CROPS]):
+            observations.append(
+                {"region": result["region"], "statement": result["statement"],
+                 "limitation": result["limitation"]}
+            )
+            total_cost += result["cost"]
+            total_latency += result["latency"]
+            total_prompt += result["prompt_tokens"]
+            total_completion += result["completion_tokens"]
     return {
         "observations": observations,
         "model": State.model,

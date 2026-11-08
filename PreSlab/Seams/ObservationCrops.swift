@@ -4,12 +4,18 @@ import UIKit
 /// Builds the labeled crops a future observation model would inspect.
 /// Pure geometry plus JPEG encoding; no network, no model, no key.
 nonisolated enum ObservationCropBuilder {
-    /// Eight crops: four corners plus four edge midpoints.
+    /// Nine crops: four corners, four edge midpoints, and the center.
+    /// The center covers surface wear a corner-only set would miss.
     static func build(from warped: RGBAImage) -> [ObservationCrop] {
+        buildRegions(from: warped, prefix: "")
+    }
+
+    static func buildRegions(from warped: RGBAImage, prefix: String) -> [ObservationCrop] {
         let width = Double(warped.width)
         let height = Double(warped.height)
         let corner = min(width, height) * 0.30
         let strip = min(width, height) * 0.20
+        let middle = min(width, height) * 0.40
         let specs: [(String, CGRect)] = [
             ("topLeft", CGRect(x: 0, y: 0, width: corner, height: corner)),
             ("topRight", CGRect(x: width - corner, y: 0, width: corner, height: corner)),
@@ -19,6 +25,7 @@ nonisolated enum ObservationCropBuilder {
             ("rightEdge", CGRect(x: width - strip, y: height / 2 - corner / 2, width: strip, height: corner)),
             ("bottomEdge", CGRect(x: width / 2 - corner / 2, y: height - strip, width: corner, height: strip)),
             ("leftEdge", CGRect(x: 0, y: height / 2 - corner / 2, width: strip, height: corner)),
+            ("center", CGRect(x: width / 2 - middle / 2, y: height / 2 - middle / 2, width: middle, height: middle)),
         ]
         var crops: [ObservationCrop] = []
         for (region, rect) in specs {
@@ -26,7 +33,7 @@ nonisolated enum ObservationCropBuilder {
                   let jpeg = ImageCoding.uiImage(from: cut)?.jpegData(compressionQuality: 0.8),
                   !jpeg.isEmpty
             else { continue }
-            crops.append(ObservationCrop(region: region, jpeg: jpeg))
+            crops.append(ObservationCrop(region: prefix + region, jpeg: jpeg))
         }
         return crops
     }
