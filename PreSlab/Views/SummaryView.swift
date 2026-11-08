@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct SummaryView: View {
     var front: SideFinding
@@ -9,6 +10,15 @@ struct SummaryView: View {
     var saveTitle: String?
     var onSave: (() -> Void)?
     var onDelete: (() -> Void)?
+    var createdAt: Date = .now
+    @State private var showShare = false
+
+    private var shareItems: [Any] {
+        var items: [Any] = [AssessmentShareText.make(front: front, back: back, createdAt: createdAt)]
+        if let frontImage { items.append(frontImage) }
+        if let backImage { items.append(backImage) }
+        return items
+    }
 
     private var verdict: AssessmentVerdict { .decide(front: front, back: back) }
 
@@ -48,6 +58,17 @@ struct SummaryView: View {
                 if let onDelete {
                     Button("Delete assessment", role: .destructive, action: onDelete)
                         .accessibilityIdentifier("deleteAssessmentButton")
+                }
+                Button {
+                    showShare = true
+                } label: {
+                    Label("Share assessment", systemImage: "square.and.arrow.up")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("shareAssessmentButton")
+                .sheet(isPresented: $showShare) {
+                    ActivitySheet(items: shareItems)
                 }
             }
             .padding()
@@ -95,4 +116,14 @@ struct SummaryView: View {
             }
         }
     }
+}
+
+private struct ActivitySheet: UIViewControllerRepresentable {
+    var items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
