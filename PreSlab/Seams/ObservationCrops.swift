@@ -6,6 +6,7 @@ import UIKit
 nonisolated enum ObservationCropBuilder {
     /// Eight crops: four corners plus four edge midpoints.
     static func build(from warped: RGBAImage) -> [ObservationCrop] {
+        guard warped.width >= 32, warped.height >= 32 else { return [] }
         let width = Double(warped.width)
         let height = Double(warped.height)
         let corner = min(width, height) * 0.30

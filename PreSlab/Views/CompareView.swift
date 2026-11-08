@@ -3,6 +3,8 @@ import SwiftUI
 struct CompareView: View {
     var first: AssessmentRecord
     var second: AssessmentRecord
+    @State private var grader: GraderProfile = .psa
+    @State private var category: CardCategory = .tcg
 
     var body: some View {
         ScrollView {
@@ -12,6 +14,10 @@ struct CompareView: View {
                 Text("Closer to 50/50 only describes the borders in each photo. It is not a grade, and it does not say which card is worth more.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                Picker("Grader", selection: $grader) {
+                    ForEach(GraderProfile.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
                 HStack(alignment: .top, spacing: 12) {
                     column(first)
                     column(second)
@@ -42,8 +48,11 @@ struct CompareView: View {
             }
             measurement("Front", record.frontFinding)
             measurement("Back", record.backFinding)
+            BaselineCompactLine(grader: grader, category: category, front: record.frontFinding, back: record.backFinding)
         }
+        .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
     }
 
     private func measurement(_ title: String, _ finding: SideFinding) -> some View {

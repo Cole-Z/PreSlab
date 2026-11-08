@@ -42,6 +42,8 @@ struct SummaryView: View {
                 sideSection("Front", finding: front, image: frontImage)
                 sideSection("Back", finding: back, image: backImage)
 
+                CenteringBaselinesView(front: front, back: back)
+
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Not assessed").font(.headline)
                     ForEach(AssessmentVerdict.notAssessed, id: \.self) { item in
@@ -97,11 +99,19 @@ struct SummaryView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(maxHeight: 220)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
             }
             if let ratios = finding.ratios {
-                Text("Left / right \(ratios.horizontalText)")
-                Text("Top / bottom \(ratios.verticalText)")
+                HStack(spacing: 16) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Left / right").font(.caption).foregroundStyle(.secondary)
+                        Text(ratios.horizontalText).font(.title3.bold().monospacedDigit())
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Top / bottom").font(.caption).foregroundStyle(.secondary)
+                        Text(ratios.verticalText).font(.title3.bold().monospacedDigit())
+                    }
+                }
                 if finding.adjustedByUser {
                     Text("Borders were adjusted by you.").font(.footnote).foregroundStyle(.secondary)
                 }
@@ -115,6 +125,9 @@ struct SummaryView: View {
                     .foregroundStyle(.secondary)
             }
         }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
     }
 }
 

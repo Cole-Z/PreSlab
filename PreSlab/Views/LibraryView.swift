@@ -56,10 +56,6 @@ struct LibraryView: View {
 
     private var list: some View {
         List {
-            Section("Developer") {
-                Button("Test AI stub on sample card") { path.append(Route.stubTest) }
-                    .accessibilityIdentifier("stubTestButton")
-            }
             ForEach(records) { record in
                 Button {
                     if comparing {
@@ -93,7 +89,7 @@ struct LibraryView: View {
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text(record.createdAt.formatted(date: .abbreviated, time: .shortened))
-                Text(AssessmentVerdict.decide(front: record.frontFinding, back: record.backFinding).title)
+                Text("Front + back · \(AssessmentVerdict.decide(front: record.frontFinding, back: record.backFinding).title)")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 if record.isSample {
