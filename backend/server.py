@@ -138,14 +138,14 @@ def observe_crops(crops: list) -> dict:
                     ],
                 }
             ],
-            "max_tokens": 256,
+            "max_tokens": 2048,
             "temperature": 0.2,
         }
         body, latency = api_post(State.key, "/chat/completions", payload)
         total_latency += latency
         content = ""
         try:
-            content = body["choices"][0]["message"]["content"]
+            content = body["choices"][0]["message"]["content"] or ""
         except (KeyError, IndexError, TypeError):
             pass
         statement, limitation = content.strip(), ""
