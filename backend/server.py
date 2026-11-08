@@ -31,7 +31,10 @@ import time
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-API_BASE = os.environ.get("LLAMA_API_BASE", "https://api.llama.com/v1")
+API_BASE = os.environ.get(
+    "MODEL_API_BASE",
+    os.environ.get("LLAMA_API_BASE", "https://api.meta.ai/v1"),
+)
 KEY_FILE = os.environ.get(
     "PRESLAB_KEY_FILE",
     os.path.join(os.path.expanduser("~"), "Documents", "preslab-key.txt"),
@@ -39,21 +42,8 @@ KEY_FILE = os.environ.get(
 MAX_CROPS = 10
 MAX_BODY_BYTES = 25 * 1024 * 1024
 
-VISION_PRIORITY = [
-    "Llama-4-Maverick-17B-128E-Instruct-FP8",
-    "Llama-4-Maverick-17B-128E-Instruct",
-    "Llama-4-Scout-17B-16E-Instruct-FP8",
-    "Llama-4-Scout-17B-16E-Instruct",
-    "Llama-3.2-90B-Vision-Instruct",
-    "Llama-3.2-11B-Vision-Instruct",
-]
-VISION_HINTS = ("vision", "scout", "maverick")
-
-RATES_PER_MTOK = {
-    "maverick": (0.22, 0.85),
-    "scout": (0.15, 0.50),
-}
-DEFAULT_RATE = (0.22, 0.85)
+# Muse Spark takes image input on the same chat-completions endpoint.
+PREFERRED_MODEL = "muse-spark-1.3"
 
 OBSERVE_PROMPT = (
     "You are a trading-card condition assistant. Look at this close-up crop "
@@ -86,37 +76,39 @@ def api_post(key: str, path: str, payload: dict):
         return json.loads(resp.read().decode()), time.time() - start
 
 
+class ProviderError(Exception):
+    def __init__(self, status: int, snippet: str):
+        super().__init__(f"HTTP {status}")
+        self.status = status
+        self.snippet = snippet
+
+
 def api_get(key: str, path: str):
+    import urllib.error
+
     req = urllib.request.Request(API_BASE + path, method="GET")
     req.add_header("Authorization", "Bearer " + key)
-    with urllib.request.urlopen(req, timeout=60) as resp:
-        return json.loads(resp.read().decode())
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return json.loads(resp.read().decode())
+    except urllib.error.HTTPError as exc:
+        raise ProviderError(exc.code, exc.read().decode(errors="replace")[:300])
 
 
 def pick_vision_model(ids: list) -> str | None:
-    for wanted in VISION_PRIORITY:
-        if wanted in ids:
-            return wanted
+    if PREFERRED_MODEL in ids:
+        return PREFERRED_MODEL
     lowered = {str(mid).lower(): mid for mid in ids}
-    for hint in VISION_HINTS:
-        for low, mid in lowered.items():
-            if hint in low:
-                return mid
+    for low, mid in lowered.items():
+        if "spark" in low:
+            return mid
     return None
 
 
 def estimate_cost(model: str, usage: dict) -> float | None:
-    prompt = usage.get("prompt_tokens") or usage.get("input_tokens")
-    completion = usage.get("completion_tokens") or usage.get("output_tokens")
-    if prompt is None and completion is None:
-        return None
-    low = model.lower()
-    rate_in, rate_out = DEFAULT_RATE
-    for name, rates in RATES_PER_MTOK.items():
-        if name in low:
-            rate_in, rate_out = rates
-            break
-    return (prompt or 0) / 1e6 * rate_in + (completion or 0) / 1e6 * rate_out
+    # No published per-token rate is baked in; the dashboard is the source
+    # of truth until the validation run records real per-scan cost.
+    return None
 
 
 class State:
@@ -231,7 +223,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(502, {"error": "provider call failed"})
             return
         print(f"done: {len(result['observations'])} observations, "
-              f"${result['estimated_cost_usd']:.6f}, {result['latency_s']:.1f}s")
+              f"{result['prompt_tokens']}+{result['completion_tokens']} tokens, "
+              f"{result['latency_s']:.1f}s (cost: check your dev.meta.ai dashboard)")
         self.send_json(200, result)
 
 
@@ -251,6 +244,15 @@ def main() -> int:
 
     try:
         body = api_get(State.key, "/models")
+    except ProviderError as exc:
+        print(f"RESULT: FAIL - Meta API refused the request (HTTP {exc.status}).")
+        if exc.status in (401, 403):
+            print("  The key is missing, wrong, or lacks API access. Recopy it from")
+            print("  the Meta developer portal (API keys tab) into preslab-key.txt")
+            print("  as plain text, one line, no extra spaces or blank lines.")
+        else:
+            print(f"  Response: {exc.snippet[:200]}")
+        return 1
     except Exception as exc:  # noqa: BLE001
         print(f"RESULT: FAIL - could not reach Meta API ({type(exc).__name__}).")
         return 1
