@@ -31,13 +31,36 @@ struct StubTestView: View {
                 .pickerStyle(.segmented)
                 .accessibilityIdentifier("observerPhotoPicker")
                 if !useSample {
-                    Picker("Assessment", selection: $selectedID) {
-                        Text("Pick one").tag(nil as UUID?)
-                        ForEach(records) { record in
-                            Text("\(record.createdAt.formatted(date: .abbreviated, time: .shortened)) — \(AssessmentVerdict.decide(front: record.frontFinding, back: record.backFinding).title)").tag(record.id as UUID?)
+                    Text("Each assessment is a whole card. One run covers its front and its back.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    ForEach(records) { record in
+                        Button {
+                            selectedID = record.id
+                        } label: {
+                            HStack(spacing: 12) {
+                                if let thumb = ImageStore.load(record.frontFileName) {
+                                    Image(uiImage: thumb)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 40, height: 56)
+                                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                                }
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(record.createdAt.formatted(date: .abbreviated, time: .shortened))
+                                    Text("Front + back • \(AssessmentVerdict.decide(front: record.frontFinding, back: record.backFinding).title)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if selectedID == record.id {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(Color.accentColor)
+                                }
+                            }
                         }
+                        .accessibilityIdentifier("observerAssessmentRow")
                     }
-                    .accessibilityIdentifier("observerAssessmentPicker")
                 }
             }
             Section {
