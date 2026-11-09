@@ -52,11 +52,26 @@ struct CenteringBaselinesView: View {
             Text(comp.summaryText)
                 .font(.subheadline.bold())
                 .accessibilityIdentifier("baselineSummary")
+            Text(measuredLine(comp))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("baselineMeasured")
             if let highest = comp.highestCompatible {
                 highestBanner(highest)
+            } else if let blocker = comp.blockerSummary {
+                Text(blocker)
+                    .font(.caption.bold())
+                    .foregroundStyle(.orange)
+                    .accessibilityIdentifier("baselineBlocker")
             }
             if !comp.unresolvedHigherRows.isEmpty {
                 unresolvedList(comp)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("All graders at a glance").font(.caption.bold()).foregroundStyle(.secondary)
+                ForEach(GraderProfile.allCases) { g in
+                    BaselineCompactLine(grader: g, category: category, front: front, back: back)
+                }
             }
             DisclosureGroup("All \(grader.title) grades", isExpanded: $showAll) {
                 VStack(spacing: 0) {
@@ -116,12 +131,28 @@ struct CenteringBaselinesView: View {
         .background(Color.green.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
     }
 
+    private func measuredLine(_ comp: CenteringComparison) -> String {
+        let f = comp.front.map { "front worst \(CenteringComparisonEngine.format($0.worst))" } ?? "front not measured"
+        let b = comp.back.map { "back worst \(CenteringComparisonEngine.format($0.worst))" } ?? "back not measured"
+        return "Measured: \(f) · \(b)."
+    }
+
     private func unresolvedList(_ comp: CenteringComparison) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        let rows = comp.unresolvedHigherRows
+        let qualitative = rows.filter { $0.state == .qualitativeReviewRequired }
+        let others = rows.filter { $0.state != .qualitativeReviewRequired }
+        return VStack(alignment: .leading, spacing: 4) {
             Label("Not ruled out — insufficient published info above", systemImage: "questionmark.circle")
                 .font(.caption.bold()).foregroundStyle(.orange)
-            ForEach(comp.unresolvedHigherRows) { r in
+            ForEach(others) { r in
                 Text("• \(grader.title) \(r.row.gradeLabel): \(r.state.title)")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if qualitative.count > 1, let first = qualitative.first, let last = qualitative.last {
+                Text("• \(grader.title) \(first.row.gradeLabel) through \(last.row.gradeLabel): Qualitative review required (\(qualitative.count) grades; a ratio alone cannot settle these)")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else if let only = qualitative.first {
+                Text("• \(grader.title) \(only.row.gradeLabel): \(only.state.title)")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }

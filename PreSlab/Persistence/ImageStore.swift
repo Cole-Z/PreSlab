@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import UIKit
 
 enum ImageStore {
@@ -13,11 +14,24 @@ enum ImageStore {
         UIImage(contentsOfFile: fileURL(name).path)
     }
 
+    /// Decode only a small thumbnail, away from the main thread. Library rows
+    /// previously loaded full-resolution photos while drawing their first frame.
+    nonisolated static func thumbnail(_ name: String) -> CGImage? {
+        guard let source = CGImageSourceCreateWithURL(fileURL(name) as CFURL, nil) else { return nil }
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: 192,
+            kCGImageSourceShouldCacheImmediately: true,
+        ]
+        return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
+    }
+
     static func delete(_ name: String) {
         try? FileManager.default.removeItem(at: fileURL(name))
     }
 
-    private static func fileURL(_ name: String) -> URL {
+    nonisolated private static func fileURL(_ name: String) -> URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Assessments", isDirectory: true)
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)

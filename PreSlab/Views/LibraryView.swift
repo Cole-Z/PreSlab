@@ -80,13 +80,7 @@ struct LibraryView: View {
                 Image(systemName: selected.contains(record.id) ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(selected.contains(record.id) ? Color.accentColor : Color.secondary)
             }
-            if let image = ImageStore.load(record.frontFileName) {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 46, height: 64)
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
-            }
+            AssessmentThumbnail(fileName: record.frontFileName)
             VStack(alignment: .leading, spacing: 4) {
                 Text(record.createdAt.formatted(date: .abbreviated, time: .shortened))
                 Text("Front + back · \(AssessmentVerdict.decide(front: record.frontFinding, back: record.backFinding).title)")
@@ -159,6 +153,33 @@ struct LibraryView: View {
         ImageStore.delete(record.frontFileName)
         ImageStore.delete(record.backFileName)
         modelContext.delete(record)
+    }
+}
+
+private struct AssessmentThumbnail: View {
+    var fileName: String
+    @State private var image: UIImage?
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else {
+                RoundedRectangle(cornerRadius: 4).fill(.quaternary)
+            }
+        }
+        .frame(width: 46, height: 64)
+        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .accessibilityHidden(true)
+        .task(id: fileName) {
+            image = nil
+            let name = fileName
+            let thumbnail = await Task.detached(priority: .utility) {
+                ImageStore.thumbnail(name)
+            }.value
+            guard !Task.isCancelled else { return }
+            image = thumbnail.map { UIImage(cgImage: $0) }
+        }
     }
 }
 

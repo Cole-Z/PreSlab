@@ -15,7 +15,7 @@ struct CameraCaptureView: View {
         VStack(spacing: 16) {
             Text("Photograph the \(side.title.lowercased())")
                 .font(.title2.bold())
-            Text("Fit the whole card inside the frame. Leave a small margin, keep the phone nearly square above the card, and tap the card to focus before you shoot.")
+            Text("Fit the whole card inside the frame. Hold about a hand's width away — closer cannot focus. Tap the card to focus before you shoot.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -35,6 +35,16 @@ struct CameraCaptureView: View {
             .frame(maxWidth: .infinity)
             .aspectRatio(3.0 / 4.0, contentMode: .fit)
             .clipShape(RoundedRectangle(cornerRadius: 16))
+
+            Button {
+                camera.setTorch(!camera.torchOn)
+            } label: {
+                Label(camera.torchOn ? "Light on" : "Light off", systemImage: camera.torchOn ? "flashlight.on.fill" : "flashlight.off.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .disabled(!camera.isAuthorized)
+            .accessibilityIdentifier("torchToggleButton")
 
             Button {
                 camera.capture(onCapture)
@@ -146,8 +156,10 @@ final class CameraModel: NSObject, AVCapturePhotoCaptureDelegate {
     private var onPhoto: ((UIImage) -> Void)?
     private var device: AVCaptureDevice?
     private var focusObservation: NSKeyValueObservation?
+    private var lastFocusPoint = CGPoint(x: 0.5, y: 0.5)
     var isAuthorized = false
     var isFocusing = false
+    var torchOn = true
     var statusMessage = "Checking camera access."
 
     func start() {
@@ -170,8 +182,28 @@ final class CameraModel: NSObject, AVCapturePhotoCaptureDelegate {
     }
 
     func stop() {
-        queue.async { [session] in
-            if session.isRunning { session.stopRunning() }
+        queue.async { [weak self] in
+            if let device = self?.device, device.hasTorch {
+                if (try? device.lockForConfiguration()) != nil {
+                    device.torchMode = .off
+                    device.unlockForConfiguration()
+                }
+            }
+            if let session = self?.session, session.isRunning { session.stopRunning() }
+        }
+    }
+
+    func setTorch(_ on: Bool) {
+        torchOn = on
+        queue.async { [weak self] in
+            guard let device = self?.device, device.hasTorch else { return }
+            do {
+                try device.lockForConfiguration()
+                device.torchMode = on ? .on : .off
+                device.unlockForConfiguration()
+            } catch {
+                return
+            }
         }
     }
 
@@ -190,6 +222,7 @@ final class CameraModel: NSObject, AVCapturePhotoCaptureDelegate {
         queue.async { [weak self] in
             guard let self, let device = self.device else { return }
             let point = CGPoint(x: min(max(devicePoint.x, 0), 1), y: min(max(devicePoint.y, 0), 1))
+            self.lastFocusPoint = point
             do {
                 try device.lockForConfiguration()
                 if device.isFocusPointOfInterestSupported {
@@ -214,14 +247,19 @@ final class CameraModel: NSObject, AVCapturePhotoCaptureDelegate {
     }
 
     /// Locks focus before the still so the photo uses a settled lens.
+    /// Forces a fresh scan at the last tapped point: re-setting an already
+    /// locked mode can be a no-op, which used to keep a stale lock forever.
     /// Gives up after a short wait rather than blocking capture forever.
     private func lockFocusBeforeCapture() {
-        guard let device, device.isFocusModeSupported(.autoFocus) else { return }
+        guard let device, device.isFocusModeSupported(.autoFocus),
+              device.isFocusModeSupported(.continuousAutoFocus) else { return }
         do {
             try device.lockForConfiguration()
-            if !device.isAdjustingFocus {
-                device.focusMode = .autoFocus
+            if device.isFocusPointOfInterestSupported {
+                device.focusPointOfInterest = lastFocusPoint
             }
+            device.focusMode = .continuousAutoFocus
+            device.focusMode = .autoFocus
             device.unlockForConfiguration()
         } catch {
             return
@@ -256,6 +294,10 @@ final class CameraModel: NSObject, AVCapturePhotoCaptureDelegate {
                 self.device = device
                 self.focusObservation = device.observe(\.isAdjustingFocus, options: [.initial, .new]) { [weak self] device, _ in
                     DispatchQueue.main.async { self?.isFocusing = device.isAdjustingFocus }
+                }
+                if device.hasTorch, (try? device.lockForConfiguration()) != nil {
+                    device.torchMode = self.torchOn ? .on : .off
+                    device.unlockForConfiguration()
                 }
                 if let connection = self.output.connection(with: .video), connection.isVideoRotationAngleSupported(90) {
                     connection.videoRotationAngle = 90

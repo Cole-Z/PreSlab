@@ -20,6 +20,12 @@ nonisolated enum CardGeometryEngine {
     /// `presetInsets` keeps a border the user already placed by hand.
     static func assess(image: RGBAImage, quad: CardQuad, presetInsets: BorderInsets?, adjustedByUser: Bool) -> GeometryAssessment {
         var issues = PhotoQuality.geometricIssues(image: image, quad: quad)
+        // A corner the user dragged just past the photo edge is a deliberate
+        // placement (the editor allows a small overscan), not a cut-off card.
+        // The automatic pass still flags a card touching the frame.
+        if adjustedByUser {
+            issues.removeAll { $0 == .edgeCutOff }
+        }
         guard QuadGeometry.isConvex(quad.pixelPoints(width: image.width, height: image.height)),
               let warped = CardWarp.flatten(image, quad: quad) else {
             if !issues.contains(.tooSkewed) { issues.append(.tooSkewed) }

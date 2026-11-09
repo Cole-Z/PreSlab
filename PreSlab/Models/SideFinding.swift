@@ -18,8 +18,10 @@ nonisolated struct SideFinding: Codable, Equatable, Sendable {
 
     var passedQuality: Bool { issues.isEmpty }
 
+    var hasMeasurableCentering: Bool { insets?.isMeasurable ?? false }
+
     var ratios: CenteringRatios? {
-        guard let insets else { return nil }
+        guard let insets, insets.isMeasurable else { return nil }
         return CenteringRatios(insets: insets)
     }
 }
@@ -36,7 +38,7 @@ nonisolated enum AssessmentVerdict: Equatable, Sendable {
     }
 
     static func decide(front: SideFinding, back: SideFinding) -> AssessmentVerdict {
-        if front.passedQuality, front.insets != nil {
+        if front.passedQuality, front.hasMeasurableCentering {
             return .centeringRecorded
         }
         _ = back
