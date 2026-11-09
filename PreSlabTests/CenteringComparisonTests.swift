@@ -124,6 +124,17 @@ private func row(_ c: CenteringComparison, _ label: String) -> CenteringRowResul
     #expect(bad.rows.allSatisfy { $0.state == .invalidMeasurement })
 }
 
+@Test func magikarpCaseBackAtCardEdgeIsMissingNotFiftyFifty() {
+    // Front 61/39, 53/47 as in the reported Magikarp; back lines left on the card edge (0/0).
+    let front = SideFinding(issues: [], quad: nil, insets: BorderInsets(left: 0.061, right: 0.039, top: 0.053, bottom: 0.047), adjustedByUser: true, unsupportedReason: nil)
+    let back = SideFinding(issues: [], quad: nil, insets: BorderInsets(left: 0, right: 0, top: 0, bottom: 0), adjustedByUser: true, unsupportedReason: nil)
+    let tag = CenteringComparisonEngine.evaluate(grader: .tag, category: .tcg, frontFinding: front, backFinding: back)
+    #expect(row(tag, "9").state == .outsideBaseline)
+    #expect(row(tag, "8.5").state == .missingMeasurement)
+    #expect(tag.highestCompatible == nil)
+    #expect(tag.blockerSummary != nil)
+}
+
 @Test func unknownHigherRowIsNotCeiling() {
     // CGC TCG: Gem Mint 10 assessable, Pristine/Mint+ unresolved above it
     let cgc = CenteringComparisonEngine.evaluate(grader: .cgc, category: .tcg, front: face(55, 55), back: face(75, 75))

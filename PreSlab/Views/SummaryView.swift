@@ -82,7 +82,7 @@ struct SummaryView: View {
         switch verdict {
         case .centeringRecorded:
             var text = "The ratios are border measurements from these photos. A professional grader can still disagree. A well-centered card can still be a poor card to submit once its price and the grading fee are known. PreSlab does not estimate that."
-            if back.insets == nil {
+            if !back.hasMeasurableCentering {
                 text += " The back was not measured. That is left blank on purpose."
             }
             return text

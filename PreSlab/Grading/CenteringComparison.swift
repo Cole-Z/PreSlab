@@ -86,6 +86,21 @@ nonisolated struct CenteringComparison: Equatable, Sendable {
         guard let idx = rows.firstIndex(where: { $0.id == highest.id }) else { return [] }
         return Array(rows[..<idx]).filter { $0.state != .outsideBaseline }
     }
+    /// One specific reason no baseline can be confirmed, when that is the case.
+    var blockerSummary: String? {
+        guard highestCompatible == nil else { return nil }
+        if front == nil && back == nil { return "Neither face was measured, so no \(grader.title) baseline can be checked." }
+        if back == nil, front != nil { return "The back was not measured, so no full \(grader.title) baseline can be confirmed. A missing back is not 50/50." }
+        if front == nil { return "The front was not measured, so no \(grader.title) baseline can be checked." }
+        if let firstOutside = rows.first(where: { $0.state == .outsideBaseline }) {
+            return "The closest assessable row, \(grader.title) \(firstOutside.row.gradeLabel), is outside its published limit (\(firstOutside.detail))"
+        }
+        if rows.contains(where: { $0.state == .qualitativeReviewRequired }) {
+            return "The remaining \(grader.title) rows need a qualitative check (such as a border sliver) that a centering ratio alone cannot settle."
+        }
+        return "No published \(grader.title) numerical baseline is available to confirm from these measurements."
+    }
+
     var summaryText: String {
         if let highest = highestCompatible {
             return "Centering fits \(grader.title) \(highest.row.gradeLabel) published baseline; this is not an overall grade prediction."
@@ -114,10 +129,13 @@ nonisolated enum CenteringComparisonEngine {
     static func evaluate(grader: GraderProfile, category: CardCategory,
                          frontFinding: SideFinding, backFinding: SideFinding,
                          uncertainty: Double? = nil) -> CenteringComparison {
-        let f = frontFinding.insets.flatMap { FaceImbalance(insets: $0) }
-        let b = backFinding.insets.flatMap { FaceImbalance(insets: $0) }
-        // Preserve invalid geometry: if insets exist but produce nil, surface invalid via sentinel.
-        if frontFinding.insets != nil, f == nil {
+        // Insets that are not measurable (both sides of an axis on the card
+        // edge) count as missing everywhere, never as a 50/50 measurement.
+        let f = frontFinding.insets.flatMap { $0.isMeasurable ? FaceImbalance(insets: $0) : nil }
+        let b = backFinding.insets.flatMap { $0.isMeasurable ? FaceImbalance(insets: $0) : nil }
+        // Preserve invalid geometry: measurable insets that still produce
+        // nil (negative or non-finite widths) surface invalid via sentinel.
+        if let insets = frontFinding.insets, insets.isMeasurable, f == nil {
             return CenteringComparison(grader: grader, category: category,
                 rows: CenteringStandards.rows(grader: grader, category: category).map {
                     CenteringRowResult(row: $0, state: .invalidMeasurement, detail: "Invalid geometry: negative width or zero sum of opposite borders.")

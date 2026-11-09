@@ -5,11 +5,7 @@ import SwiftUI
 struct PreSlabApp: App {
     var body: some Scene {
         WindowGroup {
-            LibraryView()
+            AppRootView()
         }
-        .modelContainer(
-            for: AssessmentRecord.self,
-            inMemory: ProcessInfo.processInfo.arguments.contains("--uitesting")
-        )
     }
 }
