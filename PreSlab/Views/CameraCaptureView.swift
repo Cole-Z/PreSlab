@@ -49,11 +49,11 @@ struct CameraCaptureView: View {
             Button {
                 camera.capture(onCapture)
             } label: {
-                Text(camera.isFocusing ? "Focusing…" : "Take photo")
+                Text(camera.isCapturing ? "Capturing…" : (camera.isFocusing ? "Focusing…" : "Take photo"))
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            .disabled(!camera.isAuthorized || camera.isFocusing)
+            .disabled(!camera.isAuthorized || !camera.isReady || camera.isFocusing || camera.isCapturing)
             .accessibilityIdentifier("takePhotoButton")
 
             PhotosPicker(selection: $pickerItem, matching: .images) {
@@ -65,9 +65,15 @@ struct CameraCaptureView: View {
             .onChange(of: pickerItem) { _, item in
                 guard let item else { return }
                 Task {
-                    if let data = try? await item.loadTransferable(type: Data.self),
-                       let image = UIImage(data: data) {
+                    do {
+                        guard let data = try await item.loadTransferable(type: Data.self),
+                              let image = UIImage(data: data) else {
+                            camera.captureError = "That library photo could not be read. Choose another image."
+                            return
+                        }
                         onCapture(image)
+                    } catch {
+                        camera.captureError = "That library photo could not be loaded. Choose another image."
                     }
                 }
             }
@@ -75,6 +81,14 @@ struct CameraCaptureView: View {
         .padding()
         .onAppear { camera.start() }
         .onDisappear { camera.stop() }
+        .alert("Photo unavailable", isPresented: Binding(
+            get: { camera.captureError != nil },
+            set: { if !$0 { camera.captureError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(camera.captureError ?? "")
+        }
     }
 }
 
@@ -158,9 +172,12 @@ final class CameraModel: NSObject, AVCapturePhotoCaptureDelegate {
     private var focusObservation: NSKeyValueObservation?
     private var lastFocusPoint = CGPoint(x: 0.5, y: 0.5)
     var isAuthorized = false
+    var isReady = false
     var isFocusing = false
-    var torchOn = true
+    var isCapturing = false
+    var torchOn = false
     var statusMessage = "Checking camera access."
+    var captureError: String?
 
     func start() {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
@@ -182,6 +199,7 @@ final class CameraModel: NSObject, AVCapturePhotoCaptureDelegate {
     }
 
     func stop() {
+        isReady = false
         queue.async { [weak self] in
             if let device = self?.device, device.hasTorch {
                 if (try? device.lockForConfiguration()) != nil {
@@ -208,6 +226,9 @@ final class CameraModel: NSObject, AVCapturePhotoCaptureDelegate {
     }
 
     func capture(_ handler: @escaping (UIImage) -> Void) {
+        guard isReady, !isCapturing else { return }
+        isCapturing = true
+        captureError = nil
         onPhoto = handler
         queue.async { [weak self] in
             guard let self else { return }
@@ -305,12 +326,20 @@ final class CameraModel: NSObject, AVCapturePhotoCaptureDelegate {
                 self.session.commitConfiguration()
             }
             if !self.session.isRunning { self.session.startRunning() }
+            DispatchQueue.main.async { self.isReady = self.session.isRunning }
         }
     }
 
     nonisolated func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
-        guard error == nil, let data = photo.fileDataRepresentation(), let image = UIImage(data: data) else { return }
         Task { @MainActor in
+            self.isCapturing = false
+            guard error == nil,
+                  let data = photo.fileDataRepresentation(),
+                  let image = UIImage(data: data) else {
+                self.onPhoto = nil
+                self.captureError = "The camera did not produce a usable photo. Please try again."
+                return
+            }
             self.onPhoto?(image)
             self.onPhoto = nil
         }

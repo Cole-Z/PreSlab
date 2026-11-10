@@ -12,3 +12,6 @@ __pycache__/
 .DS_Store
 xcuserdata/
 DerivedData/
+
+# Local design-generation scratch output. Final assets live in Assets.xcassets.
+generated_images/

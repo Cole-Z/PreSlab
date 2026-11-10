@@ -1,6 +1,12 @@
 # PreSlab — Project Plan
 
 > **Status (2026-11-06):** Milestone 1 is an on-device centering tool for standard-size Pokémon cards. It does not estimate a grade. Do not merge, deploy, buy services, or submit to the App Store without Cole's approval.
+>
+> **November 9, 2026 direction:** local/offline processing is the continuing
+> product architecture. Earlier references below to hosted models, backend
+> inference, Scrydex, subscriptions, or uploaded crops are historical ideas,
+> not approved implementation work. The current master roadmap and
+> `PRESLAB_DEVELOPMENT_ROADMAP.md` take precedence.
 
 ## What PreSlab is
 

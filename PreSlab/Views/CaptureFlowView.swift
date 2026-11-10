@@ -11,8 +11,10 @@ struct CaptureFlowView: View {
     @State private var sleeveConfirmed = false
     @State private var front: SideDraft?
     @State private var back: SideDraft?
+    @State private var errorTitle = "Could not save"
     @State private var errorMessage: String?
     @State private var isSample = false
+    @State private var analysisTask: Task<Void, Never>?
 
     var body: some View {
         Group {
@@ -36,7 +38,7 @@ struct CaptureFlowView: View {
         }
         .navigationTitle(isSample ? "Sample card" : "New assessment")
         .navigationBarTitleDisplayMode(.inline)
-        .alert("Could not save", isPresented: Binding(
+        .alert(errorTitle, isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
         )) {
@@ -48,6 +50,9 @@ struct CaptureFlowView: View {
             if startsWithSample && front == nil {
                 await loadSample()
             }
+        }
+        .onDisappear {
+            analysisTask?.cancel()
         }
     }
 
@@ -119,6 +124,14 @@ struct CaptureFlowView: View {
                 Button("Continue anyway") { step = .centering(side) }
                     .buttonStyle(.bordered)
             } else {
+                if issues == [.noCard] {
+                    Button("Place card edges manually") { startManualPlacement(side) }
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier("manualCardPlacementButton")
+                    Text("Use this only when the whole card is visible. You will place all four yellow corners before measuring the artwork border.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
                 Button("Take another photo") { step = .shoot(side) }
                     .buttonStyle(.borderedProminent)
                     .accessibilityIdentifier("retakePhotoButton")
@@ -172,43 +185,83 @@ struct CaptureFlowView: View {
     }
 
     private func accept(_ image: UIImage, side: CardSide) {
+        analysisTask?.cancel()
         step = .checking
         guard let rgba = ImageCoding.rgba(from: image) else {
+            errorTitle = "Photo unavailable"
             errorMessage = "That photo could not be read. Try another one."
             step = .shoot(side)
             return
         }
-        let assessment = CardGeometryEngine.assess(rgba)
-        let draft = SideDraft(rgba: rgba, warped: assessment.warped, finding: assessment.finding)
+        analysisTask = Task { @MainActor in
+            let assessment = await Task.detached(priority: .userInitiated) {
+                CardGeometryEngine.assess(rgba)
+            }.value
+            guard !Task.isCancelled else { return }
+            let draft = SideDraft(rgba: rgba, warped: assessment.warped, finding: assessment.finding)
+            if side == .front { front = draft } else { back = draft }
+            step = .quality(side)
+            analysisTask = nil
+        }
+    }
+
+    private func startManualPlacement(_ side: CardSide) {
+        guard var draft = side == .front ? front : back else { return }
+        draft.finding = SideFinding(
+            issues: [],
+            quad: CardQuad.centeredStandardCardSeed(imageWidth: draft.rgba.width, imageHeight: draft.rgba.height),
+            insets: nil,
+            adjustedByUser: true,
+            unsupportedReason: "Automatic card detection missed. Place all four yellow corners manually."
+        )
+        draft.finding.limitation = .cardNotFound
+        draft.warped = nil
         if side == .front { front = draft } else { back = draft }
-        step = .quality(side)
+        step = .centering(side)
     }
 
     private func loadSample() async {
+        analysisTask?.cancel()
         isSample = true
         step = .checking
-        let frontImage = SampleCard.front
-        let backImage = SampleCard.back
-        let frontResult = CardGeometryEngine.assess(frontImage)
-        let backResult = CardGeometryEngine.assess(backImage)
-        front = SideDraft(rgba: frontImage, warped: frontResult.warped, finding: frontResult.finding)
-        back = SideDraft(rgba: backImage, warped: backResult.warped, finding: backResult.finding)
-        step = .quality(.front)
+        analysisTask = Task { @MainActor in
+            let drafts = await Task.detached(priority: .userInitiated) {
+                let frontImage = SampleCard.front
+                let backImage = SampleCard.back
+                let frontResult = CardGeometryEngine.assess(frontImage)
+                let backResult = CardGeometryEngine.assess(backImage)
+                return (
+                    SideDraft(rgba: frontImage, warped: frontResult.warped, finding: frontResult.finding),
+                    SideDraft(rgba: backImage, warped: backResult.warped, finding: backResult.finding)
+                )
+            }.value
+            guard !Task.isCancelled else { return }
+            front = drafts.0
+            back = drafts.1
+            step = .quality(.front)
+            analysisTask = nil
+        }
+        await analysisTask?.value
     }
 
     private func save() {
         guard let front, let back else { return }
+        var savedFileNames: [String] = []
+        var insertedRecord: AssessmentRecord?
         do {
             let id = UUID()
             let frontName = "\(id.uuidString)-front.jpg"
             let backName = "\(id.uuidString)-back.jpg"
             guard let frontUI = ImageCoding.uiImage(from: front.rgba),
                   let backUI = ImageCoding.uiImage(from: back.rgba) else {
+                errorTitle = "Could not save"
                 errorMessage = "The photos could not be encoded."
                 return
             }
             try ImageStore.saveJPEG(frontUI, name: frontName)
+            savedFileNames.append(frontName)
             try ImageStore.saveJPEG(backUI, name: backName)
+            savedFileNames.append(backName)
             let record = AssessmentRecord(
                 id: id,
                 frontFileName: frontName,
@@ -218,8 +271,18 @@ struct CaptureFlowView: View {
                 isSample: isSample
             )
             modelContext.insert(record)
+            insertedRecord = record
+            try modelContext.save()
             dismiss()
         } catch {
+            if let insertedRecord {
+                modelContext.delete(insertedRecord)
+            }
+            modelContext.rollback()
+            for fileName in savedFileNames {
+                ImageStore.delete(fileName)
+            }
+            errorTitle = "Could not save"
             errorMessage = "The assessment could not be saved on this iPhone."
         }
     }
@@ -234,7 +297,7 @@ private enum FlowStep: Equatable {
     case summary
 }
 
-private struct SideDraft {
+nonisolated private struct SideDraft: Sendable {
     var rgba: RGBAImage
     var warped: RGBAImage?
     var finding: SideFinding

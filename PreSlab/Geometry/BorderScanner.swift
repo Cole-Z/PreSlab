@@ -5,17 +5,48 @@ nonisolated enum BorderScanResult: Equatable, Sendable {
     case unsupported(String)
 }
 
+nonisolated enum BorderScanRejection: String, Equatable, Sendable {
+    case imageTooSmall
+    case weakGradient
+    case inconsistentPosition
+    case outsideSearchWindow
+}
+
+/// Calibration data for one card side. This is diagnostic evidence, not a
+/// user-facing confidence score.
+nonisolated struct BorderSideDiagnostics: Equatable, Sendable {
+    var candidatePositionPixels: Float
+    var medianGradient: Float
+    var medianDeviationPixels: Float
+    var searchDepthPixels: Int
+    var sampleCount: Int
+    var rejection: BorderScanRejection?
+
+    var acceptedPositionPixels: Float? { rejection == nil ? candidatePositionPixels : nil }
+}
+
+nonisolated struct BorderScanDiagnostics: Equatable, Sendable {
+    var left: BorderSideDiagnostics
+    var right: BorderSideDiagnostics
+    var top: BorderSideDiagnostics
+    var bottom: BorderSideDiagnostics
+
+    var allSidesAccepted: Bool {
+        [left, right, top, bottom].allSatisfy { $0.rejection == nil }
+    }
+}
+
 nonisolated enum BorderScanner {
     /// Looks inward from each edge for one consistent color step.
-    /// A full-art card, or a photo with no stable step, comes back unsupported.
     static func scan(_ image: RGBAImage) -> BorderScanResult {
         guard image.width > 40, image.height > 40 else {
             return .unsupported("The card image is too small to measure a border.")
         }
-        guard let left = edgePosition(image, side: .left),
-              let right = edgePosition(image, side: .right),
-              let top = edgePosition(image, side: .top),
-              let bottom = edgePosition(image, side: .bottom) else {
+        let diagnostics = diagnose(image)
+        guard let left = diagnostics.left.acceptedPositionPixels,
+              let right = diagnostics.right.acceptedPositionPixels,
+              let top = diagnostics.top.acceptedPositionPixels,
+              let bottom = diagnostics.bottom.acceptedPositionPixels else {
             return .unsupported("No consistent artwork border was found. Full-art and borderless cards are not measured.")
         }
         let insets = BorderInsets(
@@ -27,10 +58,29 @@ nonisolated enum BorderScanner {
         return .measured(insets)
     }
 
+    static func diagnose(_ image: RGBAImage) -> BorderScanDiagnostics {
+        guard image.width > 40, image.height > 40 else {
+            let rejected = BorderSideDiagnostics(
+                candidatePositionPixels: 0,
+                medianGradient: 0,
+                medianDeviationPixels: 0,
+                searchDepthPixels: 0,
+                sampleCount: 0,
+                rejection: .imageTooSmall
+            )
+            return BorderScanDiagnostics(left: rejected, right: rejected, top: rejected, bottom: rejected)
+        }
+        return BorderScanDiagnostics(
+            left: edgeDiagnostics(image, side: .left),
+            right: edgeDiagnostics(image, side: .right),
+            top: edgeDiagnostics(image, side: .top),
+            bottom: edgeDiagnostics(image, side: .bottom)
+        )
+    }
+
     private enum Side { case left, right, top, bottom }
 
-    /// Returns the border width in pixels, or nil when the step is weak or wanders.
-    private static func edgePosition(_ image: RGBAImage, side: Side) -> Float? {
+    private static func edgeDiagnostics(_ image: RGBAImage, side: Side) -> BorderSideDiagnostics {
         let horizontal = side == .left || side == .right
         let length = horizontal ? image.height : image.width
         let depth = horizontal ? image.width : image.height
@@ -45,9 +95,9 @@ nonisolated enum BorderScanner {
             var bestIndex = 1
             var bestGradient: Float = 0
             for index in 2..<(search - 1) {
-                let gradient = gradient(image, side: side, along: sample, depth: index)
-                if gradient > bestGradient {
-                    bestGradient = gradient
+                let value = gradient(image, side: side, along: sample, depth: index)
+                if value > bestGradient {
+                    bestGradient = value
                     bestIndex = index
                 }
             }
@@ -55,17 +105,40 @@ nonisolated enum BorderScanner {
             strengths.append(bestGradient)
             sample += strideCount
         }
-        guard positions.count >= 8 else { return nil }
+        guard positions.count >= 8 else {
+            return BorderSideDiagnostics(
+                candidatePositionPixels: 0,
+                medianGradient: 0,
+                medianDeviationPixels: 0,
+                searchDepthPixels: search,
+                sampleCount: positions.count,
+                rejection: .inconsistentPosition
+            )
+        }
         let strength = median(strengths)
         let position = median(positions)
         let deviation = median(positions.map { abs($0 - position) })
         let positionLimit = Float(search - 3)
         // The step has to be strong, agree along the side, and sit inside the
         // search window. Hitting the window edge means there was no border there.
-        guard strength >= 0.18, deviation <= 3.5, position > 2, position < positionLimit else {
-            return nil
+        let rejection: BorderScanRejection?
+        if strength < 0.18 {
+            rejection = .weakGradient
+        } else if deviation > 3.5 {
+            rejection = .inconsistentPosition
+        } else if position <= 2 || position >= positionLimit {
+            rejection = .outsideSearchWindow
+        } else {
+            rejection = nil
         }
-        return position
+        return BorderSideDiagnostics(
+            candidatePositionPixels: position,
+            medianGradient: strength,
+            medianDeviationPixels: deviation,
+            searchDepthPixels: search,
+            sampleCount: positions.count,
+            rejection: rejection
+        )
     }
 
     private static func gradient(_ image: RGBAImage, side: Side, along: Int, depth: Int) -> Float {

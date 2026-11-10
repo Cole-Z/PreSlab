@@ -20,13 +20,15 @@ final class PreSlabUITestsLaunchTests: XCTestCase {
     @MainActor
     func testLaunch() throws {
         let app = XCUIApplication()
+        app.launchArguments = ["--uitesting"]
         app.launch()
 
-        // Insert steps here to perform after app launch but before taking a screenshot,
-        // such as logging into a test account or navigating somewhere in the app
+        XCTAssertTrue(app.buttons["practiceSampleButton"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.descendants(matching: .any)["startupLoading"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["startupError"].exists)
 
         let attachment = XCTAttachment(screenshot: app.screenshot())
-        attachment.name = "Launch Screen"
+        attachment.name = "Library after startup"
         attachment.lifetime = .keepAlways
         add(attachment)
     }

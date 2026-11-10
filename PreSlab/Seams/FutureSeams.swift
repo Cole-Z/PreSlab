@@ -1,7 +1,7 @@
 import Foundation
 
-/// Later AI observations. A statement has to name what the photo cannot show.
-/// Nothing in this milestone calls a model or turns observations into a grade.
+/// A local test seam for evaluating condition-observation UI with canned data.
+/// PreSlab does not call a hosted model or turn observations into a grade.
 nonisolated protocol ConditionObserver: Sendable {
     func observe(crops: [ObservationCrop]) async throws -> [ConditionObservation]
 }
@@ -27,9 +27,9 @@ nonisolated enum GradeEstimate: Sendable {
     case insufficientEvidence(reason: String)
 }
 
-/// Card identity and price stay out of the condition result. Scrydex is not
-/// called from the app; a later backend would implement PriceLookup after
-/// written permission to display prices.
+/// Dormant interfaces retained only to keep future research outside view code.
+/// They have no implementation or runtime entry point. Card identity, price
+/// lookup, scraping, and backend services are not approved product scope.
 nonisolated protocol CardCatalog: Sendable {
     func identify(frontJPEG: Data) async throws -> String?
 }

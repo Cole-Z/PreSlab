@@ -11,6 +11,7 @@ nonisolated enum ObservationCropBuilder {
     }
 
     static func buildRegions(from warped: RGBAImage, prefix: String) -> [ObservationCrop] {
+        guard warped.width >= 32, warped.height >= 32 else { return [] }
         let width = Double(warped.width)
         let height = Double(warped.height)
         let corner = min(width, height) * 0.30
