@@ -9,9 +9,11 @@ import Testing
 @testable import PreSlab
 
 struct PreSlabTests {
-
-    @Test func example() async throws {
-        // Write your test here and use APIs like `#expect(...)` to check expected conditions.
+    @Test @MainActor func cameraStartsIdleWithTheTorchOff() {
+        let camera = CameraModel()
+        #expect(!camera.torchOn)
+        #expect(!camera.isReady)
+        #expect(!camera.isCapturing)
+        #expect(camera.captureError == nil)
     }
-
 }

@@ -1,4 +1,9 @@
-# PreSlab — Monetization Plan
+# PreSlab — Monetization Plan (Superseded Historical Proposal)
+
+> **Not approved for implementation:** This document predates the November 9,
+> 2026 local-only product direction. Paid inference, image uploads, backend
+> accounts, subscriptions, and API-based pricing are out of scope unless the
+> product owner explicitly reverses that decision in a future session.
 
 > **Status:** proposal. Prices and scan counts below are placeholders.
 > Nothing here is final until the validation run measures the real

@@ -1,5 +1,11 @@
 # PreSlab — Validation Spec
 
+> **Superseded scope notice (November 9, 2026):** Section 0 remains active.
+> Sections 1–8 preserve an earlier hosted-inference experiment for historical
+> context only. They are not an approved product plan and must not authorize
+> external inference, image upload, subscriptions, or backend work. PreSlab's
+> approved measurement workflow is local and offline.
+
 > **Order:** the geometry study below is the current test. The professional-grade
 > study that follows it waits until centering is repeatable and an observation
 > model exists. Do not show a grade, a grade range, or a confidence percentage

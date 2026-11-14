@@ -140,6 +140,13 @@ nonisolated enum CardWarp {
         return RGBAImage(width: width, height: height, pixels: pixels)
     }
 
+    /// Flattens the card plus a photographic ring around it (see
+    /// `PaddedCardCoordinates`), for the artwork-border editor.
+    static func flattenExpanded(_ image: RGBAImage, quad: CardQuad) -> RGBAImage? {
+        guard let expanded = PaddedCardCoordinates.expandedQuad(quad) else { return nil }
+        return flatten(image, quad: expanded)
+    }
+
     /// Paints `card` into a new image so that the card's corners land on `quad`.
     /// Tests use this to build a known perspective photo.
     static func composite(card: RGBAImage, canvasWidth: Int, canvasHeight: Int, quad: CardQuad, background: (UInt8, UInt8, UInt8) = (28, 28, 32)) -> RGBAImage? {

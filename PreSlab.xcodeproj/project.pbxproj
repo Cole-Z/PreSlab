@@ -399,9 +399,9 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = ML6Z4ZPMSK;
 				ENABLE_PREVIEWS = YES;
+				EXCLUDED_SOURCE_FILE_NAMES = Info.plist;
 				GENERATE_INFOPLIST_FILE = NO;
-			INFOPLIST_FILE = PreSlab/Info.plist;
-			EXCLUDED_SOURCE_FILE_NAMES = Info.plist;
+				INFOPLIST_FILE = PreSlab/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -428,9 +428,9 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = ML6Z4ZPMSK;
 				ENABLE_PREVIEWS = YES;
+				EXCLUDED_SOURCE_FILE_NAMES = Info.plist;
 				GENERATE_INFOPLIST_FILE = NO;
-			INFOPLIST_FILE = PreSlab/Info.plist;
-			EXCLUDED_SOURCE_FILE_NAMES = Info.plist;
+				INFOPLIST_FILE = PreSlab/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",

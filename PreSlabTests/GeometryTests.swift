@@ -19,6 +19,16 @@ import UIKit
     #expect(ratios.verticalText == "58/42")
 }
 
+@Test func manualCardSeedIsCenteredAndUsesStandardAspect() {
+    let seed = CardQuad.centeredStandardCardSeed(imageWidth: 1200, imageHeight: 1600)
+    let points = seed.pixelPoints(width: 1200, height: 1600)
+    let width = points[1].x - points[0].x
+    let height = points[3].y - points[0].y
+    #expect(abs(width / height - 2.5 / 3.5) < 0.0001)
+    #expect(abs((points[0].x + points[1].x) / 2 - 1199.0 / 2) < 0.0001)
+    #expect(abs((points[0].y + points[3].y) / 2 - 1599.0 / 2) < 0.0001)
+}
+
 @Test func movingTheLeftBorderChangesTheRatio() {
     var insets = SampleCard.expectedInsets(SampleCard.frontPixels)
     let before = CenteringRatios(insets: insets).leftShare
@@ -41,6 +51,18 @@ import UIKit
     #expect(abs(insets.bottom - expected.bottom) * 100 <= 2)
 }
 
+@Test func borderScanDiagnosticsExplainAcceptanceAndRejection() {
+    let bordered = BorderScanner.diagnose(SampleCard.cardOnly(borders: SampleCard.frontPixels))
+    #expect(bordered.allSidesAccepted)
+    #expect(bordered.left.sampleCount >= 8)
+    #expect(bordered.left.medianGradient >= 0.18)
+
+    let uniform = RGBAImage(width: 400, height: 560) { _, _ in (200, 180, 40, 255) }
+    let rejected = BorderScanner.diagnose(uniform)
+    #expect(!rejected.allSidesAccepted)
+    #expect(rejected.left.rejection == .weakGradient)
+}
+
 @Test func uniformCardIsNotMeasured() {
     let image = RGBAImage(width: 400, height: 560) { _, _ in (200, 180, 40, 255) }
     guard case .unsupported = BorderScanner.scan(image) else {
@@ -58,6 +80,45 @@ import UIKit
         Issue.record("Uneven texture should not produce a centering ratio")
         return
     }
+}
+
+@Test func asymmetricFullArtTransitionsAreNotMistakenForAFrame() {
+    let image = RGBAImage(width: 400, height: 560) { x, y in
+        let sideDepth = 18 + ((y / 24) % 5) * 8
+        let verticalDepth = 18 + ((x / 24) % 5) * 8
+        let nearVariableEdge = x < sideDepth || x >= 400 - sideDepth || y < verticalDepth || y >= 560 - verticalDepth
+        return nearVariableEdge ? (220, 90, 170, 255) : (35, 65, 120, 255)
+    }
+    let diagnostics = BorderScanner.diagnose(image)
+    #expect(!diagnostics.allSidesAccepted)
+    guard case .unsupported = BorderScanner.scan(image) else {
+        Issue.record("Asymmetric artwork transitions must not become a confident frame measurement")
+        return
+    }
+}
+
+@Test func legacyFindingWithoutPhaseFiveMetadataKeepsPrintedFrameBehavior() throws {
+    let json = Data(#"{"issues":[],"insets":{"left":0.04,"right":0.06,"top":0.05,"bottom":0.05},"adjustedByUser":true}"#.utf8)
+    let finding = try JSONDecoder().decode(SideFinding.self, from: json)
+    #expect(finding.measurementBasis == .manualPrintedFrame)
+    #expect(finding.hasGradingComparableCentering)
+}
+
+@Test func visualReferenceIsRecordedButExcludedFromGraderCompatibility() {
+    var front = SideFinding(
+        issues: [],
+        quad: nil,
+        insets: BorderInsets(left: 0.04, right: 0.06, top: 0.05, bottom: 0.05),
+        adjustedByUser: true,
+        unsupportedReason: nil
+    )
+    front.measurementBasis = .userDefinedVisualReference
+    let comparison = CenteringComparisonEngine.evaluate(grader: .psa, category: .tcg, frontFinding: front, backFinding: .empty)
+    #expect(front.ratios != nil)
+    #expect(!front.hasGradingComparableCentering)
+    #expect(comparison.highestCompatible == nil)
+    #expect(comparison.rows.first { $0.row.gradeLabel == "10 Gem Mint" }?.state == .missingMeasurement)
+    #expect(AssessmentVerdict.decide(front: front, back: .empty) == .inconclusive)
 }
 
 @Test func perspectiveWarpRecoversKnownBorders() throws {
@@ -135,6 +196,57 @@ import UIKit
     let verdict = AssessmentVerdict.decide(front: front, back: .empty)
     #expect(verdict == .centeringRecorded)
     #expect(!AssessmentVerdict.gradeDisclaimer.lowercased().contains("psa"))
+}
+
+@Test func zeroBorderStaysZeroAndReadsZeroHundred() {
+    let insets = BorderInsets(left: 0, right: 0.12, top: 0, bottom: 0.10).clamped()
+    #expect(insets.left == 0)
+    #expect(insets.top == 0)
+    let ratios = CenteringRatios(insets: insets)
+    #expect(ratios.horizontalText == "0/100")
+    #expect(ratios.verticalText == "0/100")
+}
+
+@Test func zeroPlusZeroInsetsAreNotAMeasurement() {
+    let finding = SideFinding(issues: [], quad: nil, insets: BorderInsets(left: 0, right: 0, top: 0, bottom: 0), adjustedByUser: true, unsupportedReason: nil)
+    #expect(finding.ratios == nil)
+    #expect(!finding.hasMeasurableCentering)
+    let sliver = SideFinding(issues: [], quad: nil, insets: BorderInsets(left: 0, right: 0.10, top: 0, bottom: 0.08), adjustedByUser: true, unsupportedReason: nil)
+    #expect(sliver.ratios != nil)
+    #expect(sliver.hasMeasurableCentering)
+}
+
+@Test func paddedCoordinatesRoundTripAndRingMapsToCardEdge() {
+    #expect(abs(PaddedCardCoordinates.cardFraction(fromPadded: PaddedCardCoordinates.paddedFraction(fromCard: 0.08)) - 0.08) < 0.0001)
+    #expect(abs(PaddedCardCoordinates.cardFraction(fromPadded: PaddedCardCoordinates.pad) - 0) < 0.0001)
+    #expect(PaddedCardCoordinates.cardFraction(fromPadded: 0) < 0)
+    #expect(PaddedCardCoordinates.cardFraction(fromPadded: 1) > 1)
+}
+
+@Test func expandedWarpShowsPhotoRingAroundCard() throws {
+    let expanded = try #require(CardWarp.flattenExpanded(SampleCard.front, quad: SampleCard.quad))
+    // Corner of the expanded canvas is the dark photo background, not card border.
+    let corner = expanded.pixel(4, 4)
+    #expect(corner.0 == 28 && corner.1 == 28 && corner.2 == 32)
+    // The card centre is still the card interior.
+    let centre = expanded.pixel(CardWarp.canonicalWidth / 2, CardWarp.canonicalHeight / 2)
+    #expect(centre.0 == 18 && centre.1 == 52 && centre.2 == 96)
+}
+
+@Test func userPlacedCornerPastThePhotoEdgeStillMeasures() {
+    let card = SampleCard.cardOnly(borders: SampleCard.frontPixels)
+    let overscan = CardQuad.axisAligned(left: -0.03, top: -0.03, right: 1.03, bottom: 1.03)
+    let result = CardGeometryEngine.assess(image: card, quad: overscan, presetInsets: nil, adjustedByUser: true)
+    #expect(!result.finding.issues.contains(.edgeCutOff))
+    #expect(result.finding.insets != nil)
+}
+
+@Test func automaticCornerPastThePhotoEdgeIsStillCutOff() {
+    let card = SampleCard.cardOnly(borders: SampleCard.frontPixels)
+    let overscan = CardQuad.axisAligned(left: -0.03, top: -0.03, right: 1.03, bottom: 1.03)
+    let result = CardGeometryEngine.assess(image: card, quad: overscan, presetInsets: nil, adjustedByUser: false)
+    #expect(result.finding.issues.contains(.edgeCutOff))
+    #expect(result.finding.insets == nil)
 }
 
 private func withinTwoPoints(_ share: Double, _ expected: Double) -> Bool {
